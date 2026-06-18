@@ -38,6 +38,23 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<"master" | "automation" | "security" | "audit" | "system" | "typography">("master");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+  const [backendDown, setBackendDown] = useState(false);
+
+  // Check backend health on mount and every 15s
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch('/api/settings_categories', { method: 'GET' });
+        setBackendDown(!res.ok && res.status !== 200 && res.status !== 304 ? true : false);
+        if (res.ok) setBackendDown(false);
+      } catch {
+        setBackendDown(true);
+      }
+    };
+    check();
+    const interval = setInterval(check, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Selection states for hierarchy
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
@@ -163,7 +180,7 @@ export function Settings() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Create failed');
+          throw new Error(err.error || `${type} creation failed (HTTP ${res.status})`);
         }
       } else if (action === 'update') {
         const res = await fetch(`/api/${endpoint}/${id}`, {
@@ -173,7 +190,7 @@ export function Settings() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Update failed');
+          throw new Error(err.error || `${type} update failed (HTTP ${res.status})`);
         }
       }
 
@@ -183,10 +200,16 @@ export function Settings() {
       // Refresh immediately so the list updates without waiting for the 30s poll
       await refreshCatalog();
     } catch (err: any) {
-      setMessage({ text: err.message, type: 'error' });
+      const isNetworkDown = err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('Failed to fetch'));
+      setMessage({
+        text: isNetworkDown
+          ? '⚠️ Cannot reach the server. Please start MySQL and the Spring Boot backend (port 3000), then try again.'
+          : err.message,
+        type: 'error',
+      });
     }
     setLoading(false);
-    setTimeout(() => setMessage(null), 5000);
+    setTimeout(() => setMessage(null), 10000);
   };
 
   // Filtered views — each level depends on its parent selection
@@ -236,6 +259,18 @@ export function Settings() {
 
   return (
     <div className="max-w-[1600px] mx-auto min-h-[90vh] flex flex-col gap-6 pb-20">
+
+      {/* ── Backend Down Banner ── */}
+      {backendDown && (
+        <div className="flex items-center gap-3 px-5 py-3 bg-red-600 text-white rounded-xl text-sm font-bold shadow-lg">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <span>
+            ⚠️ Backend server is unreachable (port 3000). To save categories, subcategories and providers you must:
+            &nbsp;1) Start MySQL — open Services as Administrator and start <strong>MySQL80</strong>.
+            &nbsp;2) Start Spring Boot — run <code className="bg-white/20 px-1 rounded">mvnw.cmd spring-boot:run</code> inside <code className="bg-white/20 px-1 rounded">microservices/core-service-springboot</code>.
+          </span>
+        </div>
+      )}
 
       {/* ── Dynamic Header ── */}
       <div className="relative p-12 bg-sn-sidebar rounded-[40px] border border-white/5 shadow-2xl overflow-hidden group flex flex-col items-center text-center">

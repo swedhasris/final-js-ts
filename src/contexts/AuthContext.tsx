@@ -6,6 +6,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { ROLE_HIERARCHY, ROLE_LABELS, Role } from "../lib/roles";
+import { PermissionProvider } from "./PermissionContext";
 
 interface AuthContextType {
   user: any | null;
@@ -173,7 +174,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, demoLogin, signOut }}>
-      {children}
+      <PermissionProvider>
+        {children}
+      </PermissionProvider>
     </AuthContext.Provider>
   );
 };

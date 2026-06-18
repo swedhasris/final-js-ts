@@ -187,6 +187,36 @@ export function AccessControl() {
 
   const myAssignable = assignableRoles(myRole);
 
+  // Refresh current user profile from API
+  const refreshProfile = async () => {
+    if (!profile?.uid) return;
+    try {
+      const res = await fetch(`/api/users/${profile.uid}`, {
+        headers: {
+          "x-user-uid": profile.uid,
+          "x-user-email": profile.email || "",
+        },
+      });
+      if (res.ok) {
+        const freshData = await res.json();
+        // Update the users list with fresh data
+        setUsers(users.map(u => u.id === profile.uid ? freshData : u));
+        
+        // Update localStorage
+        localStorage.setItem("demo_user", JSON.stringify(freshData));
+        
+        // Dispatch storage event for other tabs
+        window.dispatchEvent(new StorageEvent("storage", {
+          key: "demo_user",
+          newValue: JSON.stringify(freshData),
+          oldValue: localStorage.getItem("demo_user"),
+        }));
+      }
+    } catch (err) {
+      console.error("[AccessControl] Failed to refresh profile:", err);
+    }
+  };
+
   /* ── Toggle full account access ── */
   const toggleAccess = async (u: any) => {
     const uRole = (u.role || "user") as Role;
@@ -199,6 +229,12 @@ export function AccessControl() {
       accessUpdatedBy: profile?.uid,
       accessUpdatedAt: serverTimestamp(),
     });
+    
+    // Refresh the current user's profile if we're modifying our own access
+    if (u.id === profile?.uid) {
+      await refreshProfile();
+    }
+    
     setUpdating(null);
   };
 
@@ -222,6 +258,12 @@ export function AccessControl() {
       moduleUpdatedBy: profile?.uid,
       moduleUpdatedAt: serverTimestamp(),
     });
+    
+    // Refresh the current user's profile if we're modifying our own permissions
+    if (userId === profile?.uid) {
+      await refreshProfile();
+    }
+    
     setUpdating(null);
   };
 
@@ -234,6 +276,12 @@ export function AccessControl() {
     await updateDoc(doc(db, "users", userId), {
       role: newRole, roleUpdatedBy: profile?.uid, roleUpdatedAt: serverTimestamp(),
     });
+    
+    // Refresh the current user's profile if we're modifying our own role
+    if (userId === profile?.uid) {
+      await refreshProfile();
+    }
+    
     setUpdating(null);
   };
 
@@ -292,6 +340,9 @@ export function AccessControl() {
 
       setShowCreate(false);
       setNewUser({ name: "", email: "", password: "", role: "user" });
+      
+      // Refresh the users list after creating a new user
+      await refreshProfile();
     } catch (err: any) {
       setCreateError(err.message || "Failed to create user.");
     }

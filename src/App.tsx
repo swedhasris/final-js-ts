@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { TicketsProvider } from "./contexts/TicketsContext";
 import { BrandingProvider } from "./contexts/BrandingContext";
@@ -17,6 +17,7 @@ import { ROLE_HIERARCHY, Role } from "./lib/roles";
 import { DynamicTypography } from "./components/DynamicTypography";
 import "./styles/codex-pet.css";
 import { TabWorkspaceProvider, WorkspaceLayout } from "./components/WorkspaceLayout";
+import { usePermissions } from "./contexts/PermissionContext";
 
 // Lazy loaded components
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
@@ -74,6 +75,32 @@ function LoadingScreen() {
   );
 }
 
+// Custom hook for route-level permission checking
+function useRoutePermission(allowedRoles?: Role[], allowedModules?: string[]) {
+  const { profile } = useAuth();
+  const { canAccess } = usePermissions();
+  const location = useLocation();
+
+  const pathname = location.pathname;
+  const moduleKey = pathname.split('/')[1];
+
+  // Check role-based permissions
+  if (allowedRoles && profile?.role) {
+    if (!allowedRoles.includes(profile.role)) {
+      return false;
+    }
+  }
+
+  // Check module-based permissions
+  if (allowedModules && moduleKey) {
+    if (!canAccess(moduleKey)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
 
@@ -81,6 +108,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) return <Navigate to="/login" />;
 
+  // Check if user has access to the current route
   const isAgent = profile?.role === "agent" || profile?.role === "admin" || profile?.role === "super_admin" || profile?.role === "ultra_super_admin";
 
   return (
@@ -99,6 +127,39 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     </TicketsProvider>
   );
+}
+
+interface ProtectedRouteWithPermissionsProps {
+  children: React.ReactNode;
+  allowedRoles?: Role[];
+  allowedModules?: string[];
+  requireAdmin?: boolean;
+}
+
+function ProtectedRouteWithPermissions({ 
+  children, 
+  allowedRoles, 
+  allowedModules,
+  requireAdmin
+}: ProtectedRouteWithPermissionsProps) {
+  const { user, profile, loading } = useAuth();
+  const hasPermission = useRoutePermission(allowedRoles, allowedModules);
+
+  if (loading) return <LoadingScreen />;
+
+  if (!user) return <Navigate to="/login" />;
+
+  // Check role-based permissions
+  if (requireAdmin && profile?.role !== "admin" && profile?.role !== "super_admin" && profile?.role !== "ultra_super_admin") {
+    return <Navigate to="/" />;
+  }
+
+  // Check module-based permissions
+  if (!hasPermission) {
+    return <Navigate to="/" />;
+  }
+
+  return <>{children}</>;
 }
 
 function HomeRedirect() {
@@ -144,10 +205,10 @@ function AppBody() {
                     <Route path="/tickets" element={<Tickets />} />
                     <Route path="/tickets/:id" element={<TicketDetail />} />
                     <Route path="/history" element={<GlobalHistory />} />
-                    <Route path="/sla" element={<SLAManagement />} />
+                    <Route path="/sla" element={<ProtectedRouteWithPermissions allowedRoles={["admin", "super_admin", "ultra_super_admin"]} allowedModules={["sla"]}><SLAManagement /></ProtectedRouteWithPermissions>} />
                     <Route path="/approvals" element={<Approvals />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/incident-categories" element={<IncidentCategoryManagement />} />
+                     <Route path="/users" element={<ProtectedRouteWithPermissions allowedRoles={["admin", "super_admin", "ultra_super_admin"]}><Users /></ProtectedRouteWithPermissions>} />
+                     <Route path="/incident-categories" element={<ProtectedRouteWithPermissions allowedRoles={["admin", "super_admin", "ultra_super_admin"]}><IncidentCategoryManagement /></ProtectedRouteWithPermissions>} />
                     <Route path="/timesheet" element={<Timesheet />} />
                     <Route path="/timesheet/:weekStart" element={<Timesheet />} />
                     <Route path="/timesheet/weekly" element={<TimesheetWeekly />} />
@@ -173,19 +234,19 @@ function AppBody() {
                     <Route path="/groups" element={<Groups />} />
                     <Route path="/clear-users" element={<ClearUsers />} />
                     <Route path="/email-integrations" element={<EmailIntegrations />} />
-                    <Route path="/branding" element={<BrandingSettings />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/activity-tracker" element={<ActivityTracker />} />
-                    <Route path="/data-analytics" element={<DataAnalytics />} />
-                    <Route path="/global-search" element={<GlobalSearch />} />
-                    <Route path="/meetings" element={<MeetingManagement />} />
-                    <Route path="/create-meeting" element={<CreateMeeting />} />
-                    <Route path="/ts-meeting/:tsmId/lobby" element={<TSMeetingLobby />} />
-                    <Route path="/ts-meeting/:tsmId/room" element={<TSMeetingRoom />} />
-                    <Route path="/calls" element={<CallLogs />} />
-                    <Route path="/calls/new" element={<CreateCall />} />
-                    <Route path="/calls/:id" element={<CallDetail />} />
-                    <Route path="/ai-assistant" element={<AIAssistant />} />
+                     <Route path="/branding" element={<ProtectedRouteWithPermissions allowedRoles={["super_admin", "ultra_super_admin"]}><BrandingSettings /></ProtectedRouteWithPermissions>} />
+                     <Route path="/settings" element={<ProtectedRouteWithPermissions allowedRoles={["admin", "super_admin", "ultra_super_admin"]}><Settings /></ProtectedRouteWithPermissions>} />
+                     <Route path="/activity-tracker" element={<ProtectedRouteWithPermissions allowedRoles={["agent", "admin", "super_admin", "ultra_super_admin"]}><ActivityTracker /></ProtectedRouteWithPermissions>} />
+                     <Route path="/data-analytics" element={<ProtectedRouteWithPermissions allowedRoles={["admin", "super_admin", "ultra_super_admin"]}><DataAnalytics /></ProtectedRouteWithPermissions>} />
+                     <Route path="/global-search" element={<ProtectedRouteWithPermissions allowedRoles={["user"]}><GlobalSearch /></ProtectedRouteWithPermissions>} />
+                     <Route path="/meetings" element={<ProtectedRouteWithPermissions allowedRoles={["user"]}><MeetingManagement /></ProtectedRouteWithPermissions>} />
+                     <Route path="/create-meeting" element={<ProtectedRouteWithPermissions allowedRoles={["user"]}><CreateMeeting /></ProtectedRouteWithPermissions>} />
+                     <Route path="/ts-meeting/:tsmId/lobby" element={<ProtectedRouteWithPermissions allowedRoles={["user"]}><TSMeetingLobby /></ProtectedRouteWithPermissions>} />
+                     <Route path="/ts-meeting/:tsmId/room" element={<ProtectedRouteWithPermissions allowedRoles={["user"]}><TSMeetingRoom /></ProtectedRouteWithPermissions>} />
+                     <Route path="/calls" element={<ProtectedRouteWithPermissions allowedRoles={["agent", "admin", "super_admin", "ultra_super_admin"]}><CallLogs /></ProtectedRouteWithPermissions>} />
+                     <Route path="/calls/new" element={<ProtectedRouteWithPermissions allowedRoles={["agent", "admin", "super_admin", "ultra_super_admin"]}><CreateCall /></ProtectedRouteWithPermissions>} />
+                     <Route path="/calls/:id" element={<ProtectedRouteWithPermissions allowedRoles={["agent", "admin", "super_admin", "ultra_super_admin"]}><CallDetail /></ProtectedRouteWithPermissions>} />
+                     <Route path="/ai-assistant" element={<ProtectedRouteWithPermissions allowedRoles={["agent", "admin", "super_admin", "ultra_super_admin"]}><AIAssistant /></ProtectedRouteWithPermissions>} />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" />} />

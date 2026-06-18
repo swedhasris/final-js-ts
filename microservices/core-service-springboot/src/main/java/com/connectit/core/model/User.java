@@ -51,6 +51,9 @@ public class User {
     @Column(length = 50)
     private String provider = "email";
 
+    @Column(columnDefinition = "TEXT")
+    private String restrictedModules;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
